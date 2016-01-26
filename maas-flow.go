@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -38,10 +37,19 @@ var filterSpec = flag.String("filter", strings.Map(func(r rune) rune {
 	return r
 }, defaultFilter), "constrain by hostname what will be automated")
 
-func checkError(err error, message string, v ...interface{}) {
+func checkError(err error, message string, v ...interface{}) bool {
 	if err != nil {
-		log.Fatalf(message, v)
+		log.Fatalf("[error] "+message, v)
 	}
+	return false
+}
+
+func checkWarn(err error, message string, v ...interface{}) bool {
+	if err != nil {
+		log.Printf("[warn] "+message, v)
+		return true
+	}
+	return false
 }
 
 func readStateFromFile() ([]maas.MAASObject, error) {
@@ -52,16 +60,20 @@ func readStateFromFile() ([]maas.MAASObject, error) {
 func fetchNodes(client *maas.MAASObject) ([]MaasNode, error) {
 	nodeListing := client.GetSubObject("nodes")
 	listNodeObjects, err := nodeListing.CallGet("list", url.Values{})
-	checkError(err, "[error] unable to get the list of all nodes: %s", err)
+	if checkWarn(err, "unable to get the list of all nodes: %s", err) {
+		return nil, err
+	}
 	listNodes, err := listNodeObjects.GetArray()
-	checkError(err, "[error] unable to get the node objects for the list: %s", err)
-	fmt.Printf("Got list of %v nodes\n", len(listNodes))
+	if checkWarn(err, "unable to get the node objects for the list: %s", err) {
+		return nil, err
+	}
 
 	var nodes = make([]MaasNode, len(listNodes))
 	for index, nodeObj := range listNodes {
 		node, err := nodeObj.GetMAASObject()
-		checkError(err, "[error] unable to retrieve object for node: %s", err)
-		nodes[index] = MaasNode{node}
+		if !checkWarn(err, "unable to retrieve object for node: %s", err) {
+			nodes[index] = MaasNode{node}
+		}
 	}
 	return nodes, nil
 }
