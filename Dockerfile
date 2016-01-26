@@ -5,10 +5,10 @@ FROM golang
 #ADD node.go /go/src/github.com/ciena/maas-flow/node.go
 #ADD src/github.com/juju/gomaasapi /go/src/github.com/juju/gomassapi
 
-ADD src/github.com /go/src/github.com
-ADD src/gopkg.in /go/src/gopkg.in
+RUN go get github.com/tools/godep
 
-RUN ls -R
+ADD Godeps Godeps
+RUN godep restore
 
 RUN go install github.com/ciena/maas-flow
 

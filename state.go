@@ -26,6 +26,11 @@ type Filter struct {
 }
 
 // Transitions the actual map
+//
+// Currently this is a hand compiled / optimized "next step" table. This should
+// really be generated from the state machine chart input. Once this has been
+// accomplished you should be able to determine the action to take given your
+// target state and your current state.
 var Transitions = []Transition{
 	{"Deployed", "Deployed", Done},
 	{"Deployed", "Ready", Aquire},
@@ -43,7 +48,7 @@ var Transitions = []Transition{
 	{"Deployed", "Broken", Fail},
 	{"Deployed", "FailedCommissioning", Fail},
 
-	{"Ready", "New", Comission},
+	{"Deployed", "New", Comission},
 }
 
 const (
