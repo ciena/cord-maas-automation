@@ -103,6 +103,12 @@ var Aquire = func(client *maas.MAASObject, node MaasNode) error {
 // Comission cause a node to be commissioned
 var Comission = func(client *maas.MAASObject, node MaasNode) error {
 	log.Printf("COMISSION: %s", node.Hostname())
+	nodesObj := client.GetSubObject("nodes")
+	nodeObj := nodesObj.GetSubObject(node.ID())
+	_, err := nodeObj.CallPost("commission", url.Values{})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

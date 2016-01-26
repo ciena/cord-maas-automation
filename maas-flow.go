@@ -6,23 +6,37 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"strings"
 	"time"
+	"unicode"
 
 	maas "github.com/juju/gomaasapi"
+)
+
+const (
+	defaultFilter = `{
+	  "hosts" : {
+	    "include" : [],
+		"exclude" : []
+	  },
+	  "zones" : {
+	    "include" : ["default"],
+		"exclude" : []
+      }
+	}`
 )
 
 var apiKey = flag.String("apikey", "", "key with which to access MAAS server")
 var maasURL = flag.String("maas", "http://localhost/MAAS", "url over which to access MAAS")
 var apiVersion = flag.String("apiVersion", "1.0", "version of the API to access")
 var queryPeriod = flag.String("period", "15s", "frequency the MAAS service is polled for node states")
-var filterSpec = flag.String("filter", `{
-		"hosts" : {
-		  	"include" : [ "^cord-r2-" ]
-		},
-		"zones" : {
-			"include" : [ "default", "petaluma-lab" ]
-		}
-	}`, "constrain by hostname what will be automated")
+var filterSpec = flag.String("filter", strings.Map(func(r rune) rune {
+	if unicode.IsSpace(r) {
+		return -1
+	}
+	return r
+}, defaultFilter), "constrain by hostname what will be automated")
 
 func checkError(err error, message string, v ...interface{}) {
 	if err != nil {
@@ -56,9 +70,26 @@ func main() {
 
 	flag.Parse()
 
+	// The filter can either be expressed as a string or reference a file, if
+	// the value of the filter parameter begins with a '@'
 	var filter interface{}
-	err := json.Unmarshal([]byte(*filterSpec), &filter)
-	checkError(err, "[error] unable to parse filter specification: '%s' : %s", *filterSpec, err)
+
+	if len(*filterSpec) > 0 {
+		if (*filterSpec)[0] == '@' {
+			name := os.ExpandEnv((*filterSpec)[1:])
+			file, err := os.OpenFile(name, os.O_RDONLY, 0)
+			checkError(err, "[error] unable to open file '%s' to load the filter : %s", name, err)
+			decoder := json.NewDecoder(file)
+			err = decoder.Decode(&filter)
+			checkError(err, "[error] unable to parse filter configuration from file '%s' : %s", name, err)
+		} else {
+			err := json.Unmarshal([]byte(*filterSpec), &filter)
+			checkError(err, "[error] unable to parse filter specification: '%s' : %s", *filterSpec, err)
+		}
+	} else {
+		err := json.Unmarshal([]byte(defaultFilter), &filter)
+		checkError(err, "[error] unable to parse default filter specificiation: '%s' : %s", defaultFilter, err)
+	}
 
 	period, err := time.ParseDuration(*queryPeriod)
 	checkError(err, "[error] unable to parse specified query period duration: '%s': %s", queryPeriod, err)

@@ -1,0 +1,14 @@
+{  
+   "hosts":{  
+      "include":[  
+         "^regex-pattern"
+      ]
+   },
+   "zones":{  
+      "include":[  
+         "default",
+         "petaluma-lab"
+      ]
+   }
+}
+
