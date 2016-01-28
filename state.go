@@ -88,7 +88,14 @@ const (
 
 // Done we are at the target state, nothing to do
 var Done = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
-	log.Printf("COMPLETE: %s", node.Hostname())
+	// As devices are normally in the "COMPLETED" state we don't want to
+	// log this fact unless we are in verbose mode. I suspect it would be
+	// nice to log it once when the device transitions from a non COMPLETE
+	// state to a complete state, but that would require keeping state.
+	if options.Verbose {
+		log.Printf("COMPLETE: %s", node.Hostname())
+	}
+
 	return nil
 }
 
