@@ -6,10 +6,6 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "github.com/ciena/maas-flow",
-			"Rev": "5264dffbbd32801b04e69d0000237852f06d07c3"
-		},
-		{
 			"ImportPath": "github.com/juju/gomaasapi",
 			"Rev": "e173bc8d8d3304ff11b0ded5f6d4eea0cb560a40"
 		},
