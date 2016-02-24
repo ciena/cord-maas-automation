@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"regexp"
+	"strconv"
 
 	maas "github.com/juju/gomaasapi"
 )
@@ -116,10 +117,94 @@ var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 // Aquire aquire a machine to a specific operator
 var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("AQUIRE: %s", node.Hostname())
+	nodesObj := client.GetSubObject("nodes")
+
 	if !options.Preview {
-		nodesObj := client.GetSubObject("nodes")
-		params := url.Values{"name": []string{node.Hostname()}}
-		_, err := nodesObj.CallPost("acquire", params)
+		// With a new version of MAAS we have to make sure the node is linked
+		// to the subnet vid DHCP before we move to the Aquire state. To do this
+		// We need to unlink the interface to the subnet and then relink it.
+		//
+		// Iterate through all the interfaces on the node, searching for ones
+		// that are valid and not DHCP and move them to DHCP
+		ifcsObj := client.GetSubObject("nodes").GetSubObject(node.ID()).GetSubObject("interfaces")
+		ifcsListObj, err := ifcsObj.CallGet("", url.Values{})
+		if err != nil {
+			return err
+		}
+
+		ifcsArray, err := ifcsListObj.GetArray()
+		if err != nil {
+			return err
+		}
+
+		for _, ifc := range ifcsArray {
+			ifcMap, err := ifc.GetMap()
+			if err != nil {
+				return err
+			}
+
+			// Iterate over the links assocated with the interface, looking for
+			// links with a subnect as well as a mode of "auto"
+			links, ok := ifcMap["links"]
+			if ok {
+				linkArray, err := links.GetArray()
+				if err != nil {
+					return err
+				}
+
+				for _, link := range linkArray {
+					linkMap, err := link.GetMap()
+					if err != nil {
+						return err
+					}
+					subnet, ok := linkMap["subnet"]
+					if ok {
+						subnetMap, err := subnet.GetMap()
+						if err != nil {
+							return err
+						}
+
+						val, err := linkMap["mode"].GetString()
+						if err != nil {
+							return err
+						}
+
+						if val == "auto" {
+							// Found one we like, so grab the subnet from the data and
+							// then relink this as DHCP
+							cidr, err := subnetMap["cidr"].GetString()
+							if err != nil {
+								return err
+							}
+
+							fifcID, err := ifcMap["id"].GetFloat64()
+							if err != nil {
+								return err
+							}
+							ifcID := strconv.Itoa(int(fifcID))
+
+							flID, err := linkMap["id"].GetFloat64()
+							if err != nil {
+								return err
+							}
+							lID := strconv.Itoa(int(flID))
+
+							ifcObj := ifcsObj.GetSubObject(ifcID)
+							_, err = ifcObj.CallPost("unlink_subnet", url.Values{"id": []string{lID}})
+							if err != nil {
+								return err
+							}
+							_, err = ifcObj.CallPost("link_subnet", url.Values{"mode": []string{"DHCP"}, "subnet": []string{cidr}})
+							if err != nil {
+								return err
+							}
+						}
+					}
+				}
+			}
+		}
+		_, err = nodesObj.CallPost("acquire",
+			url.Values{"name": []string{node.Hostname()}})
 		if err != nil {
 			return err
 		}
