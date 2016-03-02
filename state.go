@@ -35,6 +35,7 @@ type ProcessingOptions struct {
 	Mappings map[string]interface{}
 	Verbose  bool
 	Preview  bool
+	AlwaysRename bool
 }
 
 // Transitions the actual map
@@ -113,12 +114,21 @@ var Done = func(client *maas.MAASObject, node MaasNode, options ProcessingOption
 		log.Printf("COMPLETE: %s", node.Hostname())
 	}
 
+	if options.AlwaysRename {
+		updateNodeName(client, node, options)
+	}
+
 	return nil
 }
 
 // Deploy cause a node to deploy
 var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("DEPLOY: %s", node.Hostname())
+
+        if options.AlwaysRename {
+                updateNodeName(client, node, options)
+        }
+
 	if !options.Preview {
 		nodesObj := client.GetSubObject("nodes")
 		myNode := nodesObj.GetSubObject(node.ID())
@@ -134,6 +144,10 @@ var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("AQUIRE: %s", node.Hostname())
 	nodesObj := client.GetSubObject("nodes")
+
+        if options.AlwaysRename {
+                updateNodeName(client, node, options)
+        }
 
 	if !options.Preview {
 		// With a new version of MAAS we have to make sure the node is linked
@@ -231,6 +245,11 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 // Commission cause a node to be commissioned
 var Commission = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("COMISSION: %s", node.Hostname())
+
+        if options.AlwaysRename {
+                updateNodeName(client, node, options)
+        }
+
 	if !options.Preview {
 		nodesObj := client.GetSubObject("nodes")
 		nodeObj := nodesObj.GetSubObject(node.ID())

@@ -34,6 +34,7 @@ var apiVersion = flag.String("apiVersion", "1.0", "version of the API to access"
 var queryPeriod = flag.String("period", "15s", "frequency the MAAS service is polled for node states")
 var preview = flag.Bool("preview", false, "displays the action that would be taken, but does not do the action, in this mode the nodes are processed only once")
 var mappings = flag.String("mappings", "{}", "the mac to name mappings")
+var always = flag.Bool("always-rename", true, "attempt to rename at every stage of workflow")
 var verbose = flag.Bool("verbose", false, "display verbose logging")
 var filterSpec = flag.String("filter", strings.Map(func(r rune) rune {
 	if unicode.IsSpace(r) {
@@ -88,8 +89,9 @@ func main() {
 	flag.Parse()
 
 	options := ProcessingOptions{
-		Preview: *preview,
-		Verbose: *verbose,
+		Preview:      *preview,
+		Verbose:      *verbose,
+		AlwaysRename: *always,
 	}
 
 	// Determine the filter, this can either be specified on the the command
