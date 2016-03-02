@@ -75,6 +75,24 @@ func (n *MaasNode) Hostname() string {
 	return hn
 }
 
+// MACs get the MAC Addresses
+func (n *MaasNode) MACs() []string {
+	macsObj, _ := n.GetMap()["macaddress_set"]
+	macs, _ := macsObj.GetArray()
+	if len(macs) == 0 {
+		return []string{}
+	}
+	result := make([]string, len(macs))
+	for i, mac := range macs {
+		obj, _ := mac.GetMap()
+		addr, _ := obj["mac_address"]
+		s, _ := addr.GetString()
+		result[i] = s
+	}
+
+	return result
+}
+
 // Zone get the zone
 func (n *MaasNode) Zone() string {
 	zone := n.GetMap()["zone"]

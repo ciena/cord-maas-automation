@@ -32,8 +32,9 @@ type ProcessingOptions struct {
 			Exclude []string
 		}
 	}
-	Verbose bool
-	Preview bool
+	Mappings map[string]interface{}
+	Verbose  bool
+	Preview  bool
 }
 
 // Transitions the actual map
@@ -86,6 +87,21 @@ const (
         (DiskErasing)->(Ready)
         (Broken)->(Ready)`
 )
+
+// updateName - changes the name of the MAAS node based on the configuration file
+func updateNodeName(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
+	macs := node.MACs()
+	for _, mac := range macs {
+		name, ok := options.Mappings[mac]
+		if ok && node.Hostname() != name {
+			log.Printf("%s == %s to %s\n", mac, node.Hostname(), name)
+			nodesObj := client.GetSubObject("nodes")
+			nodeObj := nodesObj.GetSubObject(node.ID())
+			nodeObj.Update(url.Values{"hostname": []string{name.(string)}})
+		}
+	}
+	return nil
+}
 
 // Done we are at the target state, nothing to do
 var Done = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
@@ -216,9 +232,11 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 var Commission = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("COMISSION: %s", node.Hostname())
 	if !options.Preview {
-
 		nodesObj := client.GetSubObject("nodes")
 		nodeObj := nodesObj.GetSubObject(node.ID())
+
+		updateNodeName(client, node, options)
+
 		_, err := nodeObj.CallPost("commission", url.Values{})
 		if err != nil {
 			return err

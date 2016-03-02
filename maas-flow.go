@@ -23,8 +23,9 @@ const (
 	  "zones" : {
 	    "include" : ["default"],
 		"exclude" : []
-      }
+           }
 	}`
+	defaultMapping = "{}"
 )
 
 var apiKey = flag.String("apikey", "", "key with which to access MAAS server")
@@ -32,6 +33,7 @@ var maasURL = flag.String("maas", "http://localhost/MAAS", "url over which to ac
 var apiVersion = flag.String("apiVersion", "1.0", "version of the API to access")
 var queryPeriod = flag.String("period", "15s", "frequency the MAAS service is polled for node states")
 var preview = flag.Bool("preview", false, "displays the action that would be taken, but does not do the action, in this mode the nodes are processed only once")
+var mappings = flag.String("mappings", "{}", "the mac to name mappings")
 var verbose = flag.Bool("verbose", false, "display verbose logging")
 var filterSpec = flag.String("filter", strings.Map(func(r rune) rune {
 	if unicode.IsSpace(r) {
@@ -108,6 +110,26 @@ func main() {
 	} else {
 		err := json.Unmarshal([]byte(defaultFilter), &options.Filter)
 		checkError(err, "[error] unable to parse default filter specificiation: '%s' : %s", defaultFilter, err)
+	}
+
+	// Determine the mac to name mapping, this can either be specified on the the command
+	// line as a value or a file reference. If none is specified the default
+	// will be used
+	if len(*mappings) > 0 {
+		if (*mappings)[0] == '@' {
+			name := os.ExpandEnv((*mappings)[1:])
+			file, err := os.OpenFile(name, os.O_RDONLY, 0)
+			checkError(err, "[error] unable to open file '%s' to load the mac name mapping : %s", name, err)
+			decoder := json.NewDecoder(file)
+			err = decoder.Decode(&options.Mappings)
+			checkError(err, "[error] unable to parse filter configuration from file '%s' : %s", name, err)
+		} else {
+			err := json.Unmarshal([]byte(*mappings), &options.Mappings)
+			checkError(err, "[error] unable to parse mac name mapping: '%s' : %s", *mappings, err)
+		}
+	} else {
+		err := json.Unmarshal([]byte(defaultMapping), &options.Mappings)
+		checkError(err, "[error] unable to parse default mac name mappings: '%s' : %s", defaultMapping, err)
 	}
 
 	// Verify the specified period for queries can be converted into a Go duration
