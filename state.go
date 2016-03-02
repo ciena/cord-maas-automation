@@ -98,7 +98,11 @@ func updateNodeName(client *maas.MAASObject, node MaasNode, options ProcessingOp
 			log.Printf("%s == %s to %s\n", mac, node.Hostname(), name)
 			nodesObj := client.GetSubObject("nodes")
 			nodeObj := nodesObj.GetSubObject(node.ID())
-			nodeObj.Update(url.Values{"hostname": []string{name.(string)}})
+			log.Printf("RENAME '%s' to '%s'\n", node.Hostname(), name.(string))
+
+			if !options.Preview {
+				nodeObj.Update(url.Values{"hostname": []string{name.(string)}})
+			}
 		}
 	}
 	return nil
@@ -246,9 +250,7 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 var Commission = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("COMISSION: %s", node.Hostname())
 
-        if options.AlwaysRename {
-                updateNodeName(client, node, options)
-        }
+        updateNodeName(client, node, options)
 
 	if !options.Preview {
 		nodesObj := client.GetSubObject("nodes")
