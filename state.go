@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 
 	maas "github.com/juju/gomaasapi"
 )
@@ -32,9 +33,9 @@ type ProcessingOptions struct {
 			Exclude []string
 		}
 	}
-	Mappings map[string]interface{}
-	Verbose  bool
-	Preview  bool
+	Mappings     map[string]interface{}
+	Verbose      bool
+	Preview      bool
 	AlwaysRename bool
 }
 
@@ -92,16 +93,22 @@ const (
 // updateName - changes the name of the MAAS node based on the configuration file
 func updateNodeName(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	macs := node.MACs()
-	for _, mac := range macs {
-		name, ok := options.Mappings[mac]
-		if ok && node.Hostname() != name {
-			log.Printf("%s == %s to %s\n", mac, node.Hostname(), name)
-			nodesObj := client.GetSubObject("nodes")
-			nodeObj := nodesObj.GetSubObject(node.ID())
-			log.Printf("RENAME '%s' to '%s'\n", node.Hostname(), name.(string))
 
-			if !options.Preview {
-				nodeObj.Update(url.Values{"hostname": []string{name.(string)}})
+	// Get current node name and strip off domain name
+	current := node.Hostname()
+	if i := strings.IndexRune(current, '.'); i != -1 {
+		current = current[:i]
+	}
+	for _, mac := range macs {
+		if entry, ok := options.Mappings[mac]; ok {
+			if name, ok := entry.(map[string]interface{})["hostname"]; ok && current != name.(string) {
+				nodesObj := client.GetSubObject("nodes")
+				nodeObj := nodesObj.GetSubObject(node.ID())
+				log.Printf("RENAME '%s' to '%s'\n", node.Hostname(), name.(string))
+
+				if !options.Preview {
+					nodeObj.Update(url.Values{"hostname": []string{name.(string)}})
+				}
 			}
 		}
 	}
@@ -129,9 +136,9 @@ var Done = func(client *maas.MAASObject, node MaasNode, options ProcessingOption
 var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	log.Printf("DEPLOY: %s", node.Hostname())
 
-        if options.AlwaysRename {
-                updateNodeName(client, node, options)
-        }
+	if options.AlwaysRename {
+		updateNodeName(client, node, options)
+	}
 
 	if !options.Preview {
 		nodesObj := client.GetSubObject("nodes")
@@ -149,9 +156,9 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 	log.Printf("AQUIRE: %s", node.Hostname())
 	nodesObj := client.GetSubObject("nodes")
 
-        if options.AlwaysRename {
-                updateNodeName(client, node, options)
-        }
+	if options.AlwaysRename {
+		updateNodeName(client, node, options)
+	}
 
 	if !options.Preview {
 		// With a new version of MAAS we have to make sure the node is linked
@@ -248,20 +255,40 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 
 // Commission cause a node to be commissioned
 var Commission = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
-	log.Printf("COMISSION: %s", node.Hostname())
+	updateNodeName(client, node, options)
 
-        updateNodeName(client, node, options)
-
-	if !options.Preview {
-		nodesObj := client.GetSubObject("nodes")
-		nodeObj := nodesObj.GetSubObject(node.ID())
-
-		updateNodeName(client, node, options)
-
-		_, err := nodeObj.CallPost("commission", url.Values{})
-		if err != nil {
+	// Need to understand the power state of the node. We only want to move to "Commissioning" if the node
+	// power is off. If the node power is not off, then turn it off.
+	state := node.PowerState()
+	switch state {
+	case "on":
+		// Attempt to turn the node off
+		log.Printf("POWER DOWN: %s", node.Hostname())
+		if !options.Preview {
+			//POST /api/2.0/machines/{system_id}/ op=power_off
+			nodesObj := client.GetSubObject("nodes")
+			nodeObj := nodesObj.GetSubObject(node.ID())
+			_, err := nodeObj.CallPost("power_off", url.Values{})
 			return err
 		}
+		break
+	case "off":
+		// We are off so move to commissioning
+		log.Printf("COMISSION: %s", node.Hostname())
+		if !options.Preview {
+			nodesObj := client.GetSubObject("nodes")
+			nodeObj := nodesObj.GetSubObject(node.ID())
+
+			updateNodeName(client, node, options)
+
+			_, err := nodeObj.CallPost("commission", url.Values{})
+			return err
+		}
+		break
+	default:
+		// We are in a state from which we can't move forward.
+		log.Printf("ERROR: %s has invalid power state '%s'", node.Hostname(), state)
+		break
 	}
 	return nil
 }

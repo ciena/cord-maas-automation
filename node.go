@@ -69,6 +69,11 @@ func (n *MaasNode) ID() string {
 	return id
 }
 
+func (n *MaasNode) PowerState() string {
+	state, _ := n.GetString("power_state")
+	return state
+}
+
 // Hostname get the hostname
 func (n *MaasNode) Hostname() string {
 	hn, _ := n.GetString("hostname")
