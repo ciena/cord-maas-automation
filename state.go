@@ -143,8 +143,11 @@ var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 	if !options.Preview {
 		nodesObj := client.GetSubObject("nodes")
 		myNode := nodesObj.GetSubObject(node.ID())
-		_, err := myNode.CallPost("start", nil)
+		// Start the node with the trusty distro. This should really be looked up or
+		// a parameter default
+		_, err := myNode.CallPost("start", url.Values {"distro_series" : []string{"trusty"}})
 		if err != nil {
+			log.Printf("ERROR: DEPLOY '%s' : '%s'", node.Hostname(), err)
 			return err
 		}
 	}
@@ -247,6 +250,7 @@ var Aquire = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 		_, err = nodesObj.CallPost("acquire",
 			url.Values{"name": []string{node.Hostname()}})
 		if err != nil {
+			log.Printf("ERROR: AQUIRE '%s' : '%s'", node.Hostname(), err)
 			return err
 		}
 	}
@@ -269,6 +273,9 @@ var Commission = func(client *maas.MAASObject, node MaasNode, options Processing
 			nodesObj := client.GetSubObject("nodes")
 			nodeObj := nodesObj.GetSubObject(node.ID())
 			_, err := nodeObj.CallPost("power_off", url.Values{})
+			if err != nil {
+				log.Printf("ERROR: Commission '%s' : changing power start to off : '%s'", node.Hostname(), err)
+			}
 			return err
 		}
 		break
@@ -282,6 +289,9 @@ var Commission = func(client *maas.MAASObject, node MaasNode, options Processing
 			updateNodeName(client, node, options)
 
 			_, err := nodeObj.CallPost("commission", url.Values{})
+			if err != nil {
+				log.Printf("ERROR: Commission '%s' : '%s'", node.Hostname(), err)
+			}
 			return err
 		}
 		break
