@@ -269,10 +269,10 @@ var Commission = func(client *maas.MAASObject, node MaasNode, options Processing
 		// Attempt to turn the node off
 		log.Printf("POWER DOWN: %s", node.Hostname())
 		if !options.Preview {
-			//POST /api/2.0/machines/{system_id}/ op=power_off
+                        //POST /api/1.0/nodes/{system_id}/ op=stop
 			nodesObj := client.GetSubObject("nodes")
 			nodeObj := nodesObj.GetSubObject(node.ID())
-			_, err := nodeObj.CallPost("power_off", url.Values{})
+			_, err := nodeObj.CallPost("stop", url.Values{"stop_mode" : []string{"soft"}})
 			if err != nil {
 				log.Printf("ERROR: Commission '%s' : changing power start to off : '%s'", node.Hostname(), err)
 			}
