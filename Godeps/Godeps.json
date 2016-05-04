@@ -1,13 +1,15 @@
 {
-	"ImportPath": "_/Users/dbainbri/src/develop/mf",
+	"ImportPath": "github.com/ciena/cord-maas-automation",
 	"GoVersion": "go1.5",
-	"Packages": [
-		"github.com/ciena/maas-flow"
-	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/juju/gomaasapi",
 			"Rev": "e173bc8d8d3304ff11b0ded5f6d4eea0cb560a40"
+		},
+		{
+			"ImportPath": "github.com/kelseyhightower/envconfig",
+			"Comment": "1.1.0-17-g91921eb",
+			"Rev": "91921eb4cf999321cdbeebdba5a03555800d493b"
 		},
 		{
 			"ImportPath": "gopkg.in/mgo.v2/bson",
