@@ -17,6 +17,21 @@ const (
 	Provisioned
 )
 
+func (s *ProvisionState) String() string {
+	switch *s {
+	case Unprovisioned:
+		return "UNPROVISIONED"
+	case ProvisionError:
+		return "PROVISIONERROR"
+	case Provisioning:
+		return "PROVISIONING"
+	case Provisioned:
+		return "PROVISIONED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // TrackerRecord state kept for each node to be provisioned
 type TrackerRecord struct {
 	State ProvisionState

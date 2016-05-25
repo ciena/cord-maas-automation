@@ -145,9 +145,10 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 
 	record, err := options.ProvTracker.Get(node.ID())
 	log.Printf("%v\n", record)
+	log.Printf("%s\n", record.State.String())
 	if err != nil {
 		log.Printf("[warn] unable to retrieve provisioning state of node '%s' : %s", node.Hostname(), err)
-	} else if record == nil || record.State == Unprovisioned || record.State == ProvisionError {
+	} else if record.State == Unprovisioned || record.State == ProvisionError {
 		var err error = nil
 		var callout *url.URL
 		log.Printf("PROVISION '%s'", node.Hostname())
@@ -195,7 +196,8 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 			}
 		}
 	} else if options.Verbose {
-		log.Printf("[info] Not invoking provisioning for '%s', already provisioned", node.Hostname())
+		log.Printf("[info] Not invoking provisioning for '%s', currned state is '%s'", node.Hostname(),
+			record.State.String())
 	}
 
 	return nil
