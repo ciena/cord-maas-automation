@@ -26,6 +26,7 @@ const (
            }
 	}`
 	defaultMapping = "{}"
+	PROVISION_URL  = "PROVISION_URL"
 )
 
 var apiKey = flag.String("apikey", "", "key with which to access MAAS server")
@@ -92,6 +93,8 @@ func main() {
 		Preview:      *preview,
 		Verbose:      *verbose,
 		AlwaysRename: *always,
+		ProvTracker:  NewTracker(),
+		ProvisionURL: os.Getenv(PROVISION_URL),
 	}
 
 	// Determine the filter, this can either be specified on the the command

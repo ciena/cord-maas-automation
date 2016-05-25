@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,6 +38,8 @@ type ProcessingOptions struct {
 	Verbose      bool
 	Preview      bool
 	AlwaysRename bool
+	ProvTracker  Tracker
+	ProvisionURL string
 }
 
 // Transitions the actual map
@@ -45,24 +48,24 @@ type ProcessingOptions struct {
 // really be generated from the state machine chart input. Once this has been
 // accomplished you should be able to determine the action to take given your
 // target state and your current state.
-var Transitions = map[string]map[string]Action{
+var Transitions = map[string]map[string][]Action{
 	"Deployed": {
-		"New":                 Commission,
-		"Deployed":            Done,
-		"Ready":               Aquire,
-		"Allocated":           Deploy,
-		"Retired":             AdminState,
-		"Reserved":            AdminState,
-		"Releasing":           Wait,
-		"DiskErasing":         Wait,
-		"Deploying":           Wait,
-		"Commissioning":       Wait,
-		"Missing":             Fail,
-		"FailedReleasing":     Fail,
-		"FailedDiskErasing":   Fail,
-		"FailedDeployment":    Fail,
-		"Broken":              Fail,
-		"FailedCommissioning": Fail,
+		"New":                 []Action{Reset, Commission},
+		"Deployed":            []Action{Provision, Done},
+		"Ready":               []Action{Reset, Aquire},
+		"Allocated":           []Action{Reset, Deploy},
+		"Retired":             []Action{Reset, AdminState},
+		"Reserved":            []Action{Reset, AdminState},
+		"Releasing":           []Action{Reset, Wait},
+		"DiskErasing":         []Action{Reset, Wait},
+		"Deploying":           []Action{Reset, Wait},
+		"Commissioning":       []Action{Reset, Wait},
+		"Missing":             []Action{Reset, Fail},
+		"FailedReleasing":     []Action{Reset, Fail},
+		"FailedDiskErasing":   []Action{Reset, Fail},
+		"FailedDeployment":    []Action{Reset, Fail},
+		"Broken":              []Action{Reset, Fail},
+		"FailedCommissioning": []Action{Reset, Fail},
 	},
 }
 
@@ -115,6 +118,83 @@ func updateNodeName(client *maas.MAASObject, node MaasNode, options ProcessingOp
 	return nil
 }
 
+// Reset we are at the target state, nothing to do
+var Reset = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
+	if options.Verbose {
+		log.Printf("RESET: %s", node.Hostname())
+	}
+
+	if options.AlwaysRename {
+		updateNodeName(client, node, options)
+	}
+
+	options.ProvTracker.Clear(node.ID())
+
+	return nil
+}
+
+// Provision we are at the target state, nothing to do
+var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
+	if options.Verbose {
+		log.Printf("CHECK PROVISION: %s", node.Hostname())
+	}
+
+	if options.AlwaysRename {
+		updateNodeName(client, node, options)
+	}
+
+	proved, err := options.ProvTracker.Get(node.ID())
+	if err != nil {
+		log.Printf("[warn] unable to retrieve provisioning state of node '%s' : %s", node.Hostname(), err)
+	} else if !proved {
+		var err error = nil
+		var callout *url.URL
+		log.Printf("PROVISION '%s'", node.Hostname())
+		if len(options.ProvisionURL) > 0 {
+			if options.Verbose {
+				log.Printf("[info] Provisioning callout to '%s'", options.ProvisionURL)
+			}
+			callout, err = url.Parse(options.ProvisionURL)
+			if err != nil {
+				log.Printf("[error] Failed to parse provisioning URL '%s' : %s", options.ProvisionURL, err)
+			} else {
+				ips := node.IPs()
+				ip := ""
+				if len(ips) > 0 {
+					ip = ips[0]
+					log.Println(ip)
+				}
+				switch callout.Scheme {
+				// If the scheme is a file, then we will execute the refereced file
+				case "", "file":
+					log.Printf("EXEC '%s'\n", callout.Path)
+					err = exec.Command(callout.Path, node.ID(), node.Hostname(), ip).Run()
+					if err != nil {
+						log.Printf("[error] Failed to execute '%s' : %s", options.ProvisionURL, err)
+					}
+				default:
+				}
+			}
+		}
+
+		if err == nil {
+			if options.Verbose {
+				log.Printf("[info] Marking node '%s' with ID '%s' as provisioned", node.Hostname(), node.ID())
+			}
+			options.ProvTracker.Set(node.ID())
+		} else {
+			if options.Verbose {
+				log.Printf("[warn] Not marking node '%s' with ID '%s' as provisioned, because of error '%s'",
+					node.Hostname(), node.ID(), err)
+			}
+		}
+	} else if options.Verbose {
+		log.Printf("[info] Not invoking provisioning for '%s', already provisioned", node.Hostname())
+	}
+
+	return nil
+}
+
 // Done we are at the target state, nothing to do
 var Done = func(client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
 	// As devices are normally in the "COMPLETED" state we don't want to
@@ -145,7 +225,7 @@ var Deploy = func(client *maas.MAASObject, node MaasNode, options ProcessingOpti
 		myNode := nodesObj.GetSubObject(node.ID())
 		// Start the node with the trusty distro. This should really be looked up or
 		// a parameter default
-		_, err := myNode.CallPost("start", url.Values {"distro_series" : []string{"trusty"}})
+		_, err := myNode.CallPost("start", url.Values{"distro_series": []string{"trusty"}})
 		if err != nil {
 			log.Printf("ERROR: DEPLOY '%s' : '%s'", node.Hostname(), err)
 			return err
@@ -269,10 +349,10 @@ var Commission = func(client *maas.MAASObject, node MaasNode, options Processing
 		// Attempt to turn the node off
 		log.Printf("POWER DOWN: %s", node.Hostname())
 		if !options.Preview {
-                        //POST /api/1.0/nodes/{system_id}/ op=stop
+			//POST /api/1.0/nodes/{system_id}/ op=stop
 			nodesObj := client.GetSubObject("nodes")
 			nodeObj := nodesObj.GetSubObject(node.ID())
-			_, err := nodeObj.CallPost("stop", url.Values{"stop_mode" : []string{"soft"}})
+			_, err := nodeObj.CallPost("stop", url.Values{"stop_mode": []string{"soft"}})
 			if err != nil {
 				log.Printf("ERROR: Commission '%s' : changing power start to off : '%s'", node.Hostname(), err)
 			}
@@ -321,14 +401,14 @@ var AdminState = func(client *maas.MAASObject, node MaasNode, options Processing
 	return nil
 }
 
-func findAction(target string, current string) (Action, error) {
+func findActions(target string, current string) ([]Action, error) {
 	targets, ok := Transitions[target]
 	if !ok {
 		log.Printf("[warn] unable to find transitions to target state '%s'", target)
 		return nil, fmt.Errorf("Could not find transition to target state '%s'", target)
 	}
 
-	action, ok := targets[current]
+	actions, ok := targets[current]
 	if !ok {
 		log.Printf("[warn] unable to find transition from current state '%s' to target state '%s'",
 			current, target)
@@ -336,7 +416,19 @@ func findAction(target string, current string) (Action, error) {
 			current, target)
 	}
 
-	return action, nil
+	return actions, nil
+}
+
+// ProcessActions
+func ProcessActions(actions []Action, client *maas.MAASObject, node MaasNode, options ProcessingOptions) error {
+	var err error
+	for _, action := range actions {
+		if err = action(client, node, options); err != nil {
+			log.Printf("[error] Error while processing action for node '%s' : %s", node.Hostname, err)
+			break
+		}
+	}
+	return err
 }
 
 // ProcessNode something
@@ -345,15 +437,15 @@ func ProcessNode(client *maas.MAASObject, node MaasNode, options ProcessingOptio
 	if err != nil {
 		return err
 	}
-	action, err := findAction("Deployed", MaasNodeStatus(substatus).String())
+	actions, err := findActions("Deployed", MaasNodeStatus(substatus).String())
 	if err != nil {
 		return err
 	}
 
 	if options.Preview {
-		action(client, node, options)
+		ProcessActions(actions, client, node, options)
 	} else {
-		go action(client, node, options)
+		go ProcessActions(actions, client, node, options)
 	}
 	return nil
 }
