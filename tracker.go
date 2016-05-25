@@ -1,16 +1,35 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/fzzy/radix/redis"
 	"log"
 	"net/url"
 	"os"
 )
 
+type ProvisionState int8
+
+const (
+	Unprovisioned ProvisionState = iota
+	ProvisionError
+	Provisioning
+	Provisioned
+)
+
+// TrackerRecord state kept for each node to be provisioned
+type TrackerRecord struct {
+	State ProvisionState
+
+	// Timeestamp maintains the time the node started provisioning, eventually will be used to time out
+	// provisinion states
+	Timestamp int64
+}
+
 // Tracker used to track if a node has been post deployed provisioned
 type Tracker interface {
-	Get(key string) (bool, error)
-	Set(key string) error
+	Get(key string) (*TrackerRecord, error)
+	Set(key string, record *TrackerRecord) error
 	Clear(key string) error
 }
 
@@ -19,20 +38,30 @@ type RedisTracker struct {
 	client *redis.Client
 }
 
-func (t *RedisTracker) Get(key string) (bool, error) {
+func (t *RedisTracker) Get(key string) (*TrackerRecord, error) {
 	reply := t.client.Cmd("get", key)
 	if reply.Err != nil {
-		return false, reply.Err
+		return nil, reply.Err
 	}
 	if reply.Type == redis.NilReply {
-		return false, nil
+		var record TrackerRecord
+		record.State = Unprovisioned
+		return &record, nil
 	}
 
-	value, err := reply.Bool()
-	return value, err
+	value, err := reply.Str()
+	if err != nil {
+		return nil, err
+	}
+	var record TrackerRecord
+	err = json.Unmarshal([]byte(value), &record)
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
 }
 
-func (t *RedisTracker) Set(key string) error {
+func (t *RedisTracker) Set(key string, record *TrackerRecord) error {
 	reply := t.client.Cmd("set", key, true)
 	return reply.Err
 }
@@ -44,18 +73,20 @@ func (t *RedisTracker) Clear(key string) error {
 
 // MemoryTracker in memory implementation of the tracker interface
 type MemoryTracker struct {
-	data map[string]bool
+	data map[string]TrackerRecord
 }
 
-func (m *MemoryTracker) Get(key string) (bool, error) {
+func (m *MemoryTracker) Get(key string) (*TrackerRecord, error) {
 	if value, ok := m.data[key]; ok {
-		return value, nil
+		return &value, nil
 	}
-	return false, nil
+	var record TrackerRecord
+	record.State = Unprovisioned
+	return &record, nil
 }
 
-func (m *MemoryTracker) Set(key string) error {
-	m.data[key] = true
+func (m *MemoryTracker) Set(key string, record *TrackerRecord) error {
+	m.data[key] = *record
 	return nil
 }
 
@@ -85,7 +116,7 @@ func NewTracker() Tracker {
 
 	// Else fallback to an in memory tracker
 	tracker := new(MemoryTracker)
-	tracker.data = make(map[string]bool)
+	tracker.data = make(map[string]TrackerRecord)
 	log.Println("[info] Using memory based structures to track provisioning status of nodes")
 	return tracker
 }

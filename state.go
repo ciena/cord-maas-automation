@@ -143,10 +143,11 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 		updateNodeName(client, node, options)
 	}
 
-	proved, err := options.ProvTracker.Get(node.ID())
+	record, err := options.ProvTracker.Get(node.ID())
+	log.Printf("%v\n", record)
 	if err != nil {
 		log.Printf("[warn] unable to retrieve provisioning state of node '%s' : %s", node.Hostname(), err)
-	} else if !proved {
+	} else if record == nil || record.State == Unprovisioned || record.State == ProvisionError {
 		var err error = nil
 		var callout *url.URL
 		log.Printf("PROVISION '%s'", node.Hostname())
@@ -168,6 +169,8 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 				// If the scheme is a file, then we will execute the refereced file
 				case "", "file":
 					log.Printf("EXEC '%s'\n", callout.Path)
+					record.State = Provisioning
+					options.ProvTracker.Set(node.ID(), record)
 					err = exec.Command(callout.Path, node.ID(), node.Hostname(), ip).Run()
 					if err != nil {
 						log.Printf("[error] Failed to execute '%s' : %s", options.ProvisionURL, err)
@@ -181,11 +184,14 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 			if options.Verbose {
 				log.Printf("[info] Marking node '%s' with ID '%s' as provisioned", node.Hostname(), node.ID())
 			}
-			options.ProvTracker.Set(node.ID())
+			record.State = Provisioned
+			options.ProvTracker.Set(node.ID(), record)
 		} else {
 			if options.Verbose {
 				log.Printf("[warn] Not marking node '%s' with ID '%s' as provisioned, because of error '%s'",
 					node.Hostname(), node.ID(), err)
+				record.State = ProvisionError
+				options.ProvTracker.Set(node.ID(), record)
 			}
 		}
 	} else if options.Verbose {
