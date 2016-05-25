@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	maas "github.com/juju/gomaasapi"
 )
@@ -40,6 +41,7 @@ type ProcessingOptions struct {
 	AlwaysRename bool
 	ProvTracker  Tracker
 	ProvisionURL string
+	ProvisionTTL time.Duration
 }
 
 // Transitions the actual map
@@ -144,8 +146,9 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 	}
 
 	record, err := options.ProvTracker.Get(node.ID())
-	log.Printf("%v\n", record)
-	log.Printf("%s\n", record.State.String())
+	if options.Verbose {
+		log.Printf("[info] Current state of node '%s' is '%s'", node.Hostname(), record.State.String())
+	}
 	if err != nil {
 		log.Printf("[warn] unable to retrieve provisioning state of node '%s' : %s", node.Hostname(), err)
 	} else if record.State == Unprovisioned || record.State == ProvisionError {
@@ -169,8 +172,11 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 				switch callout.Scheme {
 				// If the scheme is a file, then we will execute the refereced file
 				case "", "file":
-					log.Printf("EXEC '%s'\n", callout.Path)
+					if options.Verbose {
+						log.Printf("[info] executing local script file '%s'", callout.Path)
+					}
 					record.State = Provisioning
+					record.Timestamp = time.Now().Unix()
 					options.ProvTracker.Set(node.ID(), record)
 					err = exec.Command(callout.Path, node.ID(), node.Hostname(), ip).Run()
 					if err != nil {
@@ -195,6 +201,11 @@ var Provision = func(client *maas.MAASObject, node MaasNode, options ProcessingO
 				options.ProvTracker.Set(node.ID(), record)
 			}
 		}
+	} else if record.State == Provisioning && time.Since(time.Unix(record.Timestamp, 0)) > options.ProvisionTTL {
+		log.Printf("[error] Provisioning of node '%s' has passed provisioning TTL of '%v'",
+			node.Hostname(), options.ProvisionTTL)
+		record.State = ProvisionError
+		options.ProvTracker.Set(node.ID(), record)
 	} else if options.Verbose {
 		log.Printf("[info] Not invoking provisioning for '%s', currned state is '%s'", node.Hostname(),
 			record.State.String())
