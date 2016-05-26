@@ -1,6 +1,6 @@
 FROM golang:alpine
 
-RUN apk --update add git ansible
+RUN apk --update add git
 
 WORKDIR /go
 RUN go get github.com/tools/godep
