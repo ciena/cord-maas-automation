@@ -95,7 +95,11 @@ const (
         (FailedEraseDisk)->(Broken)
         (Releasing)->(Ready)
         (DiskErasing)->(Ready)
-        (Broken)->(Ready)`
+        (Broken)->(Ready)
+	(Deployed)->(Provisioning)
+	(Provisioning)->(ProvisionError)
+	(ProvisionError)->(Provisioning)
+	(Provisioning)->(Provisioned)`
 )
 
 // updateName - changes the name of the MAAS node based on the configuration file
